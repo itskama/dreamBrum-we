@@ -85,11 +85,11 @@ const LocalDreamAnalyzer = () => {
         try {
             console.log('🔍 Анализируем локально:', dreamText);
 
-            // 1. Токенизация текста
+            // 1. Токенизация текста вручную
             const { Tensor } = await import('@xenova/transformers');
             const inputs = await model.tokenizer(dreamText);
 
-            // 2. Явное приведение к int32 (ONNX часто требует int32 вместо int64 в браузере)
+            // 2. Явное приведение к int32 (ONNX в браузере часто не поддерживает int64)
             const input_ids = new Tensor(
                 'int32',
                 Int32Array.from(inputs.input_ids.data, x => Number(x)),
@@ -101,8 +101,41 @@ const LocalDreamAnalyzer = () => {
                 inputs.attention_mask.dims
             );
 
-            // 3. Запуск инференса
-            const result = await model({ input_ids, attention_mask });
+            // 3. Запуск инференса напрямую через сессию ONNX (минуя обертки)
+            // Это позволяет получить сырые результаты, даже если они называются иначе в ONNX-файле
+            const rawOutput = await model.model.session.run({ input_ids, attention_mask });
+
+            // 4. Ручной пост-процессинг (вместо _postprocess для стабильности)
+            // Пытаемся найти логиты в сыром ответе
+            const logitsTensor = rawOutput.logits || Object.values(rawOutput)[0];
+
+            if (!logitsTensor || !logitsTensor.data) {
+                console.error('❌ Неожиданный ответ модели:', rawOutput);
+                throw new Error('Модель не вернула данные (logits)');
+            }
+
+            const logits = Array.from(logitsTensor.data);
+
+            // Вычисляем Softmax: exp(x) / sum(exp(x))
+            // Используем maxLogit для предотвращения переполнения Math.exp
+            const maxLogit = Math.max(...logits);
+            const scores = logits.map(l => Math.exp(l - maxLogit));
+            const sumScores = scores.reduce((a, b) => a + b, 0);
+            const probabilities = scores.map(s => s / sumScores);
+
+            // Получаем маппинг меток (из пайплайна или внутренней модели)
+            const id2label = model.config?.id2label || model.model?.config?.id2label;
+            
+            if (!id2label) {
+                console.error('❌ Не удалось найти id2label в', model);
+                throw new Error('Конфигурация модели не загружена');
+            }
+
+            // Формируем массив результатов как в пайплайне
+            const result = Object.entries(id2label).map(([id, label]) => ({
+                label: label,
+                score: probabilities[Number(id)]
+            }));
 
             console.log('✅ Результат:', result);
 
@@ -137,9 +170,7 @@ const LocalDreamAnalyzer = () => {
         <section className="dream-analyzer">
             <Container>
                 <h2 className="section-title">🧠 Локальный AI-анализ</h2>
-                <p className="section-subtitle">
-                    Модель работает прямо в вашем браузере! (никаких серверов)
-                </p>
+
 
                 {/* Статус загрузки модели */}
                 <div className="model-status" style={{
