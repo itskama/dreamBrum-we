@@ -2,6 +2,21 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## 🧠 Настройка локальной AI-модели
+
+Для работы функции **локального анализа снов** необходимо скачать файл весов модели (132 МБ). Файл слишком велик для хранения на GitHub, поэтому его нужно скачать отдельно после клонирования репозитория.
+
+### Как подготовить модель:
+
+1. Склонируйте репозиторий и установите зависимости (`npm install`).
+2. В корневой папке проекта запустите команду загрузки:
+   ```bash
+   npm run download-model
+   ```
+3. Скрипт автоматически скачает `model.onnx` и разместит его по адресу `public/models/distilbert-base-uncased-emotion/onnx/model.onnx`.
+
+После выполнения команды вы сможете использовать ИИ-анализатор в приложении полностью без интернета.
+
 ## Available Scripts
 
 In the project directory, you can run:
