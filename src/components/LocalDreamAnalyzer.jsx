@@ -33,6 +33,8 @@ const LocalDreamAnalyzer = () => {
     const [history, setHistory] = useState([]);
     const [modelStatus, setModelStatus] = useState('Загрузка модели...');
     const [model, setModel] = useState(null);
+    const [translator, setTranslator] = useState(null);
+    const [isTranslating, setIsTranslating] = useState(false);
 
     // Загружаем модель при запуске компонента
     useEffect(() => {
@@ -47,9 +49,9 @@ const LocalDreamAnalyzer = () => {
             const { pipeline, env } = await import('@xenova/transformers');
 
             // Важно: настраиваем библиотеку на использование скачанных файлов
-            env.allowRemoteModels = false; // Отключаем скачивание из интернета
-            env.allowLocalModels = true;   // Разрешаем использование локальных путей (браузер сделает fetch)
-            env.localModelPath = '/models/'; // Сервер будет отдавать файлы из папки public/models
+            env.allowRemoteModels = true;  // Разрешаем скачивание, если нет локально
+            env.allowLocalModels = true;   // Сначала ищем локально
+            env.localModelPath = '/models/'; // Папка public/models
 
             // Загружаем модель эмоций из локальной папки distilbert-base-uncased-emotion
             const classifier = await pipeline(
@@ -82,12 +84,47 @@ const LocalDreamAnalyzer = () => {
         setIsAnalyzing(true);
         setError(null);
 
+        let textToAnalyze = dreamText;
+
+        // Определяем, нужен ли перевод
+        const needsTranslation = /[а-яё]/i.test(dreamText);
+
         try {
-            console.log('🔍 Анализируем локально:', dreamText);
+            if (needsTranslation) {
+                setIsTranslating(true);
+                setModelStatus('🌐 Перевод текста с русского...');
+                
+                try {
+                    let classifierTranslator = translator;
+                    if (!classifierTranslator) {
+                        const { pipeline } = await import('@xenova/transformers');
+                        classifierTranslator = await pipeline(
+                            'translation',
+                            'Xenova/opus-mt-ru-en',
+                            { quantized: true }
+                        );
+                        setTranslator(() => classifierTranslator);
+                    }
+                    
+                    const translation = await classifierTranslator(dreamText);
+                    textToAnalyze = translation[0].translation_text;
+                    console.log('📝 Переведено:', textToAnalyze);
+                } catch (err) {
+                    console.error('❌ Ошибка перевода:', err);
+                    setError('Не удалось перевести текст. Попробуйте на английском.');
+                    setIsAnalyzing(false);
+                    setIsTranslating(false);
+                    return;
+                } finally {
+                    setIsTranslating(false);
+                }
+            }
+
+            console.log('🔍 Анализируем локально:', textToAnalyze);
 
             // 1. Токенизация текста вручную
             const { Tensor } = await import('@xenova/transformers');
-            const inputs = await model.tokenizer(dreamText);
+            const inputs = await model.tokenizer(textToAnalyze);
 
             // 2. Явное приведение к int32 (ONNX в браузере часто не поддерживает int64)
             const input_ids = new Tensor(
@@ -201,7 +238,7 @@ const LocalDreamAnalyzer = () => {
                                 disabled={isAnalyzing || !model}
                                 size="large"
                             >
-                                {isAnalyzing ? '🤔 Анализируем...' : '✨ Анализировать сон'}
+                                {isAnalyzing ? (isTranslating ? '🌐 Переводим...' : '🤔 Анализируем...') : '✨ Анализировать сон'}
                             </Button>
                         </div>
 

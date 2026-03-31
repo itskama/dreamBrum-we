@@ -1,0 +1,5 @@
+transformers
+langdetect
+torch
+sentencepiece
+sacremoses
