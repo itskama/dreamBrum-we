@@ -1,35 +1,40 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import './Header.css';
 import Button from './ui/Button';
 import Container from './ui/Container';
 
-const Header = ({ isLoggedIn, onLogin }) => {
+const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { currentUser } = useAuth();
 
   return (
     <header className="header">
       <Container>
         <div className="header-content">
-          <div className="logo">
+          <Link to="/" className="logo" style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className="logo-icon">🌙</span>
             <span className="logo-text">DreamBrum</span>
-          </div>
+          </Link>
 
           <nav className={`nav-menu ${isMenuOpen ? 'active' : ''}`}>
-            <a href="#features">Возможности</a>
-            <a href="#demo">Демо</a>
-            <a href="#about">О проекте</a>
+            <Link to="/">Главная</Link>
+            {currentUser && <Link to="/cabinet">Личный кабинет</Link>}
+            {currentUser && <Link to="/admin">Админ-панель</Link>}
           </nav>
 
           <div className="header-actions">
-            {isLoggedIn ? (
-              <Button variant="secondary" size="small">
-                Личный кабинет
-              </Button>
+            {currentUser ? (
+              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                {currentUser.email}
+              </span>
             ) : (
-              <Button onClick={onLogin} size="small">
-                Войти
-              </Button>
+              <Link to="/login" style={{ textDecoration: 'none' }}>
+                <Button size="small">
+                  Войти
+                </Button>
+              </Link>
             )}
           </div>
 

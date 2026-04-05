@@ -1,24 +1,23 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
-import Hero from './components/Hero';
-import Features from './components/Features';
-import LocalDreamAnalyzer from './components/LocalDreamAnalyzer'; // новый компонент
-import DreamArchive from './components/DreamArchive';
 import Footer from './components/Footer';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Cabinet from './pages/Cabinet';
+import AdminPanel from './pages/AdminPanel';
 import './App.css';
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
   return (
     <div className="app">
-      <Header isLoggedIn={isLoggedIn} onLogin={() => setIsLoggedIn(true)} />
-      <main>
-        <Hero />
-        <Features />
-        <LocalDreamAnalyzer /> {/* заменили на локальный */}
-        <DreamArchive />
-      </main>
+      <Header />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/cabinet" element={<Cabinet />} />
+        <Route path="/admin" element={<AdminPanel />} />
+      </Routes>
       <Footer />
     </div>
   );

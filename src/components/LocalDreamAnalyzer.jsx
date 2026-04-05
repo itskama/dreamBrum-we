@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import CircularProgress from '@mui/material/CircularProgress';
+import { useAuth } from '../contexts/AuthContext';
+import { ref, push, set } from 'firebase/database';
+import { db } from '../firebase';
 import './DreamAnalyzer.css'; // используем те же стили
 import Button from './ui/Button';
 import Container from './ui/Container';
@@ -26,6 +30,10 @@ const emotionNames = {
 };
 
 const LocalDreamAnalyzer = () => {
+    const authContext = useAuth();
+    const currentUser = authContext?.currentUser;
+    const userSettings = authContext?.userSettings;
+
     const [dreamText, setDreamText] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [emotions, setEmotions] = useState(null);
@@ -105,15 +113,19 @@ const LocalDreamAnalyzer = () => {
                         );
                         setTranslator(() => classifierTranslator);
                     }
-                    
-                    const translation = await classifierTranslator(dreamText);
+
+                    const translation = await classifierTranslator(dreamText, {
+                        max_length: 512,
+                        num_beams: 1,
+                        do_sample: false,
+                    });
                     textToAnalyze = translation[0].translation_text;
+                    setDreamText(textToAnalyze); // мгновенно обновляем текст в UI
                     console.log('📝 Переведено:', textToAnalyze);
                 } catch (err) {
                     console.error('❌ Ошибка перевода:', err);
                     setError('Не удалось перевести текст. Попробуйте на английском.');
                     setIsAnalyzing(false);
-                    setIsTranslating(false);
                     return;
                 } finally {
                     setIsTranslating(false);
@@ -162,7 +174,7 @@ const LocalDreamAnalyzer = () => {
 
             // Получаем маппинг меток (из пайплайна или внутренней модели)
             const id2label = model.config?.id2label || model.model?.config?.id2label;
-            
+
             if (!id2label) {
                 console.error('❌ Не удалось найти id2label в', model);
                 throw new Error('Конфигурация модели не загружена');
@@ -185,15 +197,28 @@ const LocalDreamAnalyzer = () => {
 
                 setEmotions(sortedEmotions);
 
-                setHistory(prev => [
-                    {
-                        text: dreamText,
-                        emotions: sortedEmotions,
-                        date: new Date().toLocaleString(),
-                        mainEmotion: sortedEmotions[0].label
-                    },
-                    ...prev.slice(0, 4)
-                ]);
+                const newHistoryItem = {
+                    text: dreamText,
+                    emotions: sortedEmotions,
+                    date: new Date().toLocaleString(),
+                    mainEmotion: sortedEmotions[0].label
+                };
+
+                setHistory(prev => [newHistoryItem, ...prev.slice(0, 4)]);
+
+                if (currentUser && (userSettings?.saveHistory !== false)) {
+                    console.log('📝 Попытка сохранения в Firebase в /users/' + currentUser.uid + '/history');
+                    try {
+                        const historyRef = ref(db, `users/${currentUser.uid}/history`);
+                        const newRecordRef = push(historyRef);
+                        set(newRecordRef, newHistoryItem);
+                        console.log('✅ Данные успешно отправлены в Firebase!');
+                    } catch (e) {
+                        console.error('❌ Ошибка сохранения в БД Firebase:', e);
+                    }
+                } else {
+                    console.log('ℹ️ Сохранение в БД пропущено: пользователь не вошел или история отключена в настройках.');
+                }
             }
         } catch (err) {
             console.error('❌ Ошибка анализа:', err);
@@ -237,8 +262,13 @@ const LocalDreamAnalyzer = () => {
                                 onClick={analyzeDream}
                                 disabled={isAnalyzing || !model}
                                 size="large"
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                             >
-                                {isAnalyzing ? (isTranslating ? '🌐 Переводим...' : '🤔 Анализируем...') : '✨ Анализировать сон'}
+                                {isAnalyzing ? (
+                                    isTranslating ? (
+                                        <><CircularProgress size={20} color="inherit" /> Переводим...</>
+                                    ) : '🤔 Анализируем...'
+                                ) : '✨ Анализировать сон'}
                             </Button>
                         </div>
 
