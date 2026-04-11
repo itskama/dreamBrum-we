@@ -4,10 +4,13 @@ import { useAuth } from '../contexts/AuthContext';
 import './Header.css';
 import Button from './ui/Button';
 import Container from './ui/Container';
+import { translations } from '../translations';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { currentUser } = useAuth();
+  const { currentUser, userSettings } = useAuth();
+
+  const t = translations[userSettings?.language || 'ru'] || translations.ru;
 
   return (
     <header className="header">
@@ -19,20 +22,26 @@ const Header = () => {
           </Link>
 
           <nav className={`nav-menu ${isMenuOpen ? 'active' : ''}`}>
-            <Link to="/">Главная</Link>
-            {currentUser && <Link to="/cabinet">Личный кабинет</Link>}
-            {currentUser && <Link to="/admin">Админ-панель</Link>}
+            <Link to="/">{t.nav.home}</Link>
           </nav>
 
           <div className="header-actions">
             {currentUser ? (
-              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+              <Link to="/cabinet" style={{ 
+                fontSize: '14px', 
+                color: 'var(--text-secondary)', 
+                textDecoration: 'none',
+                transition: 'color 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = 'var(--primary)'}
+              onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+              >
                 {currentUser.email}
-              </span>
+              </Link>
             ) : (
               <Link to="/login" style={{ textDecoration: 'none' }}>
                 <Button size="small">
-                  Войти
+                  {t.nav.login}
                 </Button>
               </Link>
             )}

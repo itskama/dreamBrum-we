@@ -3,9 +3,10 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth } from '../contexts/AuthContext';
 import { ref, push, set } from 'firebase/database';
 import { db } from '../firebase';
-import './DreamAnalyzer.css'; // используем те же стили
+import './DreamAnalyzer.css';
 import Button from './ui/Button';
 import Container from './ui/Container';
+import { translations } from '../translations';
 
 // Эмодзи для эмоций
 const emotionEmojis = {
@@ -18,50 +19,36 @@ const emotionEmojis = {
     neutral: '😐'
 };
 
-// Русские названия эмоций
-const emotionNames = {
-    anger: 'Злость',
-    fear: 'Страх',
-    joy: 'Радость',
-    love: 'Любовь',
-    sadness: 'Грусть',
-    surprise: 'Удивление',
-    neutral: 'Нейтрально'
-};
-
 const LocalDreamAnalyzer = () => {
     const authContext = useAuth();
     const currentUser = authContext?.currentUser;
     const userSettings = authContext?.userSettings;
+
+    const t = translations[userSettings?.language || 'ru'] || translations.ru;
 
     const [dreamText, setDreamText] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [emotions, setEmotions] = useState(null);
     const [error, setError] = useState(null);
     const [history, setHistory] = useState([]);
-    const [modelStatus, setModelStatus] = useState('Загрузка модели...');
+    const [modelStatus, setModelStatus] = useState('modelLoading');
     const [model, setModel] = useState(null);
     const [translator, setTranslator] = useState(null);
     const [isTranslating, setIsTranslating] = useState(false);
 
-    // Загружаем модель при запуске компонента
     useEffect(() => {
         loadModel();
     }, []);
 
     const loadModel = async () => {
         try {
-            setModelStatus('⏳ Загружаем модель из кэша (может занять 1-2 секунды)...');
+            setModelStatus('modelLoadingCache');
 
-            // Динамический импорт, чтобы не грузить сразу всё приложение
             const { pipeline, env } = await import('@xenova/transformers');
+            env.allowRemoteModels = true;
+            env.allowLocalModels = true;
+            env.localModelPath = '/models/';
 
-            // Важно: настраиваем библиотеку на использование скачанных файлов
-            env.allowRemoteModels = true;  // Разрешаем скачивание, если нет локально
-            env.allowLocalModels = true;   // Сначала ищем локально
-            env.localModelPath = '/models/'; // Папка public/models
-
-            // Загружаем модель эмоций из локальной папки distilbert-base-uncased-emotion
             const classifier = await pipeline(
                 'text-classification',
                 'distilbert-base-uncased-emotion',
@@ -69,23 +56,22 @@ const LocalDreamAnalyzer = () => {
             );
 
             setModel(() => classifier);
-            setModelStatus('✅ Модель готова! Можно анализировать сны.');
-            console.log('🎉 Модель загружена полностью локально!');
+            setModelStatus('modelReady');
         } catch (err) {
-            console.error('❌ Ошибка загрузки модели:', err);
-            setModelStatus('❌ Ошибка загрузки модели');
-            setError('Не удалось загрузить модель. Убедитесь, что файлы скачаны в папку public.');
+            console.error('❌ Model error:', err);
+            setModelStatus('modelError');
+            setError(userSettings?.language === 'en' ? 'Failed to load model.' : 'Не удалось загрузить модель.');
         }
     };
 
     const analyzeDream = async () => {
         if (!dreamText.trim()) {
-            setError('Введите описание сна');
+            setError(t.analyzer.inputError);
             return;
         }
 
         if (!model) {
-            setError('Модель ещё не загружена. Подождите...');
+            setError(t.analyzer.waitModel);
             return;
         }
 
@@ -93,14 +79,12 @@ const LocalDreamAnalyzer = () => {
         setError(null);
 
         let textToAnalyze = dreamText;
-
-        // Определяем, нужен ли перевод
         const needsTranslation = /[а-яё]/i.test(dreamText);
 
         try {
             if (needsTranslation) {
                 setIsTranslating(true);
-                setModelStatus('🌐 Перевод текста с русского...');
+                setModelStatus(t.analyzer.translating);
                 
                 try {
                     let classifierTranslator = translator;
@@ -120,11 +104,10 @@ const LocalDreamAnalyzer = () => {
                         do_sample: false,
                     });
                     textToAnalyze = translation[0].translation_text;
-                    setDreamText(textToAnalyze); // мгновенно обновляем текст в UI
-                    console.log('📝 Переведено:', textToAnalyze);
+                    setDreamText(textToAnalyze);
                 } catch (err) {
-                    console.error('❌ Ошибка перевода:', err);
-                    setError('Не удалось перевести текст. Попробуйте на английском.');
+                    console.error('❌ Translation error:', err);
+                    setError(t.analyzer.error);
                     setIsAnalyzing(false);
                     return;
                 } finally {
@@ -132,13 +115,9 @@ const LocalDreamAnalyzer = () => {
                 }
             }
 
-            console.log('🔍 Анализируем локально:', textToAnalyze);
-
-            // 1. Токенизация текста вручную
             const { Tensor } = await import('@xenova/transformers');
             const inputs = await model.tokenizer(textToAnalyze);
 
-            // 2. Явное приведение к int32 (ONNX в браузере часто не поддерживает int64)
             const input_ids = new Tensor(
                 'int32',
                 Int32Array.from(inputs.input_ids.data, x => Number(x)),
@@ -150,47 +129,27 @@ const LocalDreamAnalyzer = () => {
                 inputs.attention_mask.dims
             );
 
-            // 3. Запуск инференса напрямую через сессию ONNX (минуя обертки)
-            // Это позволяет получить сырые результаты, даже если они называются иначе в ONNX-файле
             const rawOutput = await model.model.session.run({ input_ids, attention_mask });
-
-            // 4. Ручной пост-процессинг (вместо _postprocess для стабильности)
-            // Пытаемся найти логиты в сыром ответе
             const logitsTensor = rawOutput.logits || Object.values(rawOutput)[0];
 
             if (!logitsTensor || !logitsTensor.data) {
-                console.error('❌ Неожиданный ответ модели:', rawOutput);
-                throw new Error('Модель не вернула данные (logits)');
+                throw new Error('No logits received');
             }
 
             const logits = Array.from(logitsTensor.data);
-
-            // Вычисляем Softmax: exp(x) / sum(exp(x))
-            // Используем maxLogit для предотвращения переполнения Math.exp
             const maxLogit = Math.max(...logits);
             const scores = logits.map(l => Math.exp(l - maxLogit));
             const sumScores = scores.reduce((a, b) => a + b, 0);
             const probabilities = scores.map(s => s / sumScores);
 
-            // Получаем маппинг меток (из пайплайна или внутренней модели)
             const id2label = model.config?.id2label || model.model?.config?.id2label;
 
-            if (!id2label) {
-                console.error('❌ Не удалось найти id2label в', model);
-                throw new Error('Конфигурация модели не загружена');
-            }
-
-            // Формируем массив результатов как в пайплайне
             const result = Object.entries(id2label).map(([id, label]) => ({
                 label: label,
                 score: probabilities[Number(id)]
             }));
 
-            console.log('✅ Результат:', result);
-
-            // Transformers.js возвращает массив с результатами
             if (Array.isArray(result) && result.length > 0) {
-                // Сортируем по вероятности
                 const sortedEmotions = result
                     .sort((a, b) => b.score - a.score)
                     .slice(0, 5);
@@ -207,51 +166,45 @@ const LocalDreamAnalyzer = () => {
                 setHistory(prev => [newHistoryItem, ...prev.slice(0, 4)]);
 
                 if (currentUser && (userSettings?.saveHistory !== false)) {
-                    console.log('📝 Попытка сохранения в Firebase в /users/' + currentUser.uid + '/history');
                     try {
                         const historyRef = ref(db, `users/${currentUser.uid}/history`);
                         const newRecordRef = push(historyRef);
                         set(newRecordRef, newHistoryItem);
-                        console.log('✅ Данные успешно отправлены в Firebase!');
                     } catch (e) {
-                        console.error('❌ Ошибка сохранения в БД Firebase:', e);
+                        console.error('❌ Firebase error:', e);
                     }
-                } else {
-                    console.log('ℹ️ Сохранение в БД пропущено: пользователь не вошел или история отключена в настройках.');
                 }
             }
         } catch (err) {
-            console.error('❌ Ошибка анализа:', err);
-            setError('Ошибка при анализе текста');
+            console.error('❌ Analysis error:', err);
+            setError(t.analyzer.error);
         } finally {
             setIsAnalyzing(false);
         }
     };
 
     return (
-        <section className="dream-analyzer">
+        <section className="dream-analyzer" id="analyzer">
             <Container>
-                <h2 className="section-title">🧠 Локальный AI-анализ</h2>
+                <h2 className="section-title">{t.analyzer.title}</h2>
 
-
-                {/* Статус загрузки модели */}
                 <div className="model-status" style={{
                     padding: '12px',
                     marginBottom: '20px',
-                    background: modelStatus.includes('✅') ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 152, 0, 0.1)',
-                    border: `1px solid ${modelStatus.includes('✅') ? '#4CAF50' : '#FF9800'}`,
+                    background: modelStatus === 'modelReady' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 152, 0, 0.1)',
+                    border: `1px solid ${modelStatus === 'modelReady' ? '#4CAF50' : '#FF9800'}`,
                     borderRadius: '8px',
-                    color: modelStatus.includes('✅') ? '#4CAF50' : '#FF9800',
+                    color: modelStatus === 'modelReady' ? '#4CAF50' : '#FF9800',
                     textAlign: 'center'
                 }}>
-                    {modelStatus}
+                    {t.analyzer[modelStatus]}
                 </div>
 
                 <div className="analyzer-container">
                     <div className="input-section">
                         <textarea
                             className="dream-input"
-                            placeholder="Например: I was flying over mountains, feeling free and happy..."
+                            placeholder={t.analyzer.placeholder}
                             value={dreamText}
                             onChange={(e) => setDreamText(e.target.value)}
                             rows="5"
@@ -265,10 +218,8 @@ const LocalDreamAnalyzer = () => {
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                             >
                                 {isAnalyzing ? (
-                                    isTranslating ? (
-                                        <><CircularProgress size={20} color="inherit" /> Переводим...</>
-                                    ) : '🤔 Анализируем...'
-                                ) : '✨ Анализировать сон'}
+                                    isTranslating ? t.analyzer.translating : t.analyzer.analyzing
+                                ) : t.analyzer.analyzeBtn}
                             </Button>
                         </div>
 
@@ -277,7 +228,7 @@ const LocalDreamAnalyzer = () => {
 
                     {emotions && (
                         <div className="results-section">
-                            <h3>Результаты анализа:</h3>
+                            <h3>{t.analyzer.results}</h3>
                             <div className="emotion-bars">
                                 {emotions.map((emotion, idx) => (
                                     <div key={idx} className="emotion-item">
@@ -286,7 +237,7 @@ const LocalDreamAnalyzer = () => {
                                                 {emotionEmojis[emotion.label] || '❓'}
                                             </span>
                                             <span className="emotion-name">
-                                                {emotionNames[emotion.label] || emotion.label}
+                                                {t.emotions[emotion.label] || emotion.label}
                                             </span>
                                             <span className="emotion-score">
                                                 {(emotion.score * 100).toFixed(1)}%
@@ -310,7 +261,7 @@ const LocalDreamAnalyzer = () => {
                                     {emotionEmojis[emotions[0].label] || '✨'}
                                 </span>
                                 <span className="main-emotion-text">
-                                    Главная эмоция: <strong>{emotionNames[emotions[0].label]}</strong>
+                                    {t.analyzer.mainEmotion}: <strong>{t.emotions[emotions[0].label]}</strong>
                                     ({(emotions[0].score * 100).toFixed(1)}%)
                                 </span>
                             </div>
@@ -319,7 +270,7 @@ const LocalDreamAnalyzer = () => {
 
                     {history.length > 0 && (
                         <div className="history-section">
-                            <h3>Последние анализы:</h3>
+                            <h3>{t.analyzer.lastAnalyzes}</h3>
                             <div className="history-list">
                                 {history.map((item, idx) => (
                                     <div key={idx} className="history-item">
@@ -330,7 +281,7 @@ const LocalDreamAnalyzer = () => {
                                             <span className="history-icon">
                                                 {emotionEmojis[item.mainEmotion] || '✨'}
                                             </span>
-                                            <span>{emotionNames[item.mainEmotion]}</span>
+                                            <span>{t.emotions[item.mainEmotion]}</span>
                                         </div>
                                         <div className="history-date">{item.date}</div>
                                     </div>
@@ -342,8 +293,7 @@ const LocalDreamAnalyzer = () => {
 
                 <div className="model-info">
                     <p>
-                        🔬 Локальная модель: <strong>distilbert-base-uncased-emotion</strong><br />
-                        ✅ Работает полностью в браузере, без сервера и интернета после загрузки!
+                        {t.analyzer.localModel} <strong>distilbert-base-uncased-emotion</strong>
                     </p>
                 </div>
             </Container>

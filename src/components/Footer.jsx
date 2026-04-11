@@ -1,8 +1,13 @@
 import React from 'react';
 import './Footer.css';
 import Container from './ui/Container';
+import { useAuth } from '../contexts/AuthContext';
+import { translations } from '../translations';
 
 const Footer = () => {
+  const { userSettings } = useAuth();
+  const t = translations[userSettings?.language || 'ru'] || translations.ru;
+
   return (
     <footer className="footer">
       <Container>
@@ -13,35 +18,35 @@ const Footer = () => {
               <span className="logo-text">DreamBrum</span>
             </div>
             <p className="footer-description">
-              AI-дневник для визуализации и анализа сновидений
+              {t.footer.description}
             </p>
           </div>
 
           <div className="footer-links">
             <div className="footer-column">
-              <h4>Продукт</h4>
-              <a href="#features">Возможности</a>
-              <a href="#demo">Демо</a>
-              <a href="#pricing">Цены</a>
+              <h4>{t.footer.product}</h4>
+              <a href="#features">{t.footer.features}</a>
+              <a href="#demo">{t.footer.demo}</a>
+              <a href="#pricing">{t.footer.pricing}</a>
             </div>
             <div className="footer-column">
-              <h4>Ресурсы</h4>
-              <a href="#blog">Блог</a>
-              <a href="#research">Исследования</a>
-              <a href="#faq">FAQ</a>
+              <h4>{t.footer.resources}</h4>
+              <a href="#blog">{t.footer.blog}</a>
+              <a href="#research">{t.footer.research}</a>
+              <a href="#faq">{t.footer.faq}</a>
             </div>
             <div className="footer-column">
-              <h4>Компания</h4>
-              <a href="#about">О нас</a>
-              <a href="#contact">Контакты</a>
-              <a href="#privacy">Конфиденциальность</a>
+              <h4>{t.footer.company}</h4>
+              <a href="#about">{t.footer.about}</a>
+              <a href="#contact">{t.footer.contact}</a>
+              <a href="#privacy">{t.footer.privacy}</a>
             </div>
           </div>
         </div>
 
         <div className="footer-bottom">
           <p className="copyright">
-            © 2026 DreamBrum. Все права защищены.
+            {t.footer.copyright}
           </p>
           <div className="social-links">
             <a href="#" className="social-link" aria-label="Twitter">𝕏</a>
