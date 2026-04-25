@@ -42,6 +42,7 @@ export default function Cabinet() {
     const [history, setHistory] = useState([]);
     const [lang, setLang] = useState(userSettings?.language || 'ru');
     const [saveHist, setSaveHist] = useState(userSettings?.saveHistory ?? true);
+    const [vizEnabled, setVizEnabled] = useState(userSettings?.visualizationEnabled ?? false);
     const [selectedEmotion, setSelectedEmotion] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -81,11 +82,16 @@ export default function Cabinet() {
         if (userSettings) {
             setLang(userSettings.language || 'ru');
             setSaveHist(userSettings.saveHistory ?? true);
+            setVizEnabled(userSettings.visualizationEnabled ?? false);
         }
     }, [userSettings]);
 
     async function handleSaveSettings() {
-        await updateSettings({ language: lang, saveHistory: saveHist });
+        await updateSettings({ 
+            language: lang, 
+            saveHistory: saveHist,
+            visualizationEnabled: vizEnabled 
+        });
         alert(lang === 'ru' ? 'Настройки сохранены' : 'Settings saved');
     }
 
@@ -146,7 +152,7 @@ export default function Cabinet() {
                         </select>
                     </div>
 
-                    <div style={{ marginBottom: '25px' }}>
+                    <div style={{ marginBottom: '15px' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '14px' }}>
                             <input 
                                 type="checkbox" 
@@ -155,6 +161,18 @@ export default function Cabinet() {
                                 style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                             />
                             {t.cabinet.saveHistory}
+                        </label>
+                    </div>
+
+                    <div style={{ marginBottom: '25px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '14px' }}>
+                            <input 
+                                type="checkbox" 
+                                checked={vizEnabled} 
+                                onChange={(e) => setVizEnabled(e.target.checked)} 
+                                style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
+                            />
+                            {t.cabinet.enableVisualization}
                         </label>
                     </div>
 
@@ -258,19 +276,31 @@ export default function Cabinet() {
                                         onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--primary)'}
                                         onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                                     >
-                                        <div style={{ 
-                                            width: '50px', 
-                                            height: '50px', 
-                                            borderRadius: '12px', 
-                                            background: emotionGradients[record.mainEmotion || 'neutral'],
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '1.5rem',
-                                            flexShrink: 0
-                                        }}>
-                                            {emotionEmojis[record.mainEmotion || 'neutral']}
-                                        </div>
+                                        {record.image ? (
+                                            <div style={{ 
+                                                width: '100px', 
+                                                height: '100px', 
+                                                borderRadius: '12px', 
+                                                overflow: 'hidden',
+                                                flexShrink: 0
+                                            }}>
+                                                <img src={record.image} alt="Dream" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            </div>
+                                        ) : (
+                                            <div style={{ 
+                                                width: '50px', 
+                                                height: '50px', 
+                                                borderRadius: '12px', 
+                                                background: emotionGradients[record.mainEmotion || 'neutral'],
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '1.5rem',
+                                                flexShrink: 0
+                                            }}>
+                                                {emotionEmojis[record.mainEmotion || 'neutral']}
+                                            </div>
+                                        )}
                                         <div style={{ flex: 1 }}>
                                             <p style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: '400', lineHeight: '1.5' }}>
                                                 {record.text}

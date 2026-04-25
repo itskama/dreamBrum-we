@@ -8,9 +8,14 @@ import { translations } from '../translations';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { currentUser, userSettings } = useAuth();
+  const { currentUser, userSettings, updateSettings } = useAuth();
 
   const t = translations[userSettings?.language || 'ru'] || translations.ru;
+
+  const toggleLanguage = () => {
+    const newLang = userSettings?.language === 'ru' ? 'en' : 'ru';
+    updateSettings({ ...userSettings, language: newLang });
+  };
 
   return (
     <header className="header">
@@ -26,6 +31,15 @@ const Header = () => {
           </nav>
 
           <div className="header-actions">
+            <button 
+              className="lang-switcher" 
+              onClick={toggleLanguage}
+              title={userSettings?.language === 'ru' ? 'Switch to English' : 'Переключить на русский'}
+            >
+              <span className="lang-icon">🌐</span>
+              <span className="lang-text">{userSettings?.language === 'ru' ? 'EN' : 'RU'}</span>
+            </button>
+
             {currentUser ? (
               <Link to="/cabinet" style={{ 
                 fontSize: '14px', 

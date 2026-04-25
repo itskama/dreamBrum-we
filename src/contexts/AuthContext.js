@@ -19,7 +19,10 @@ export function useAuth() {
 export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [userSettings, setUserSettings] = useState(null);
+    const [userSettings, setUserSettings] = useState(() => {
+        const savedLang = localStorage.getItem('guestLanguage');
+        return { language: savedLang || 'ru', saveHistory: true };
+    });
 
     async function signup(email, password) {
         const result = await createUserWithEmailAndPassword(auth, email, password);
@@ -28,8 +31,9 @@ export function AuthProvider({ children }) {
             email: email,
             role: 'user',
             settings: {
-                language: 'ru',
-                saveHistory: true
+                language: userSettings.language,
+                saveHistory: true,
+                visualizationEnabled: false
             },
             history: [] // We'll store dreams here or in a separate path
         });
@@ -55,7 +59,13 @@ export function AuthProvider({ children }) {
     }
 
     async function updateSettings(settings) {
-        await update(ref(db, 'users/' + currentUser.uid + '/settings'), settings);
+        if (currentUser) {
+            await update(ref(db, 'users/' + currentUser.uid + '/settings'), settings);
+        } else {
+            if (settings.language) {
+                localStorage.setItem('guestLanguage', settings.language);
+            }
+        }
         setUserSettings(prev => ({ ...prev, ...settings }));
     }
 
@@ -66,12 +76,23 @@ export function AuthProvider({ children }) {
                 // Fetch settings from db
                 const snapshot = await get(child(ref(db), `users/${user.uid}`));
                 if (snapshot.exists()) {
-                    setUserSettings(snapshot.val().settings);
+                    const data = snapshot.val();
+                    setUserSettings({
+                        language: 'ru',
+                        saveHistory: true,
+                        visualizationEnabled: false,
+                        ...data.settings
+                    });
                 } else {
-                    setUserSettings({ language: 'ru', saveHistory: true });
+                    const defaultSettings = { language: 'ru', saveHistory: true, visualizationEnabled: false };
+                    setUserSettings(defaultSettings);
+                    // Also initialize in DB if it's a new user without settings (shouldn't normally happen but safe)
+                    await set(ref(db, `users/${user.uid}/settings`), defaultSettings);
                 }
             } else {
-                setUserSettings(null);
+                // If logged out, revert to localStorage guest settings
+                const savedLang = localStorage.getItem('guestLanguage');
+                setUserSettings({ language: savedLang || 'ru', saveHistory: true, visualizationEnabled: false });
             }
             setLoading(false);
         });

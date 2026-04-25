@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth } from '../contexts/AuthContext';
-import { ref, push, set } from 'firebase/database';
+import { ref, push, set, update } from 'firebase/database';
 import { db } from '../firebase';
 import './DreamAnalyzer.css';
 import Button from './ui/Button';
 import Container from './ui/Container';
 import { translations } from '../translations';
+import DreamVisualizer from './DreamVisualizer';
 
 // Эмодзи для эмоций
 const emotionEmojis = {
@@ -35,6 +36,8 @@ const LocalDreamAnalyzer = () => {
     const [model, setModel] = useState(null);
     const [translator, setTranslator] = useState(null);
     const [isTranslating, setIsTranslating] = useState(false);
+    const [generatedImage, setGeneratedImage] = useState(null);
+    const [currentRecordRef, setCurrentRecordRef] = useState(null);
 
     useEffect(() => {
         loadModel();
@@ -64,6 +67,19 @@ const LocalDreamAnalyzer = () => {
         }
     };
 
+    const handleImageGenerated = async (base64Image) => {
+        setGeneratedImage(base64Image);
+        
+        // If we have a record in DB, update it with the image
+        if (currentRecordRef && currentUser) {
+            try {
+                await update(currentRecordRef, { image: base64Image });
+            } catch (e) {
+                console.error('❌ Error updating record with image:', e);
+            }
+        }
+    };
+
     const analyzeDream = async () => {
         if (!dreamText.trim()) {
             setError(t.analyzer.inputError);
@@ -77,6 +93,9 @@ const LocalDreamAnalyzer = () => {
 
         setIsAnalyzing(true);
         setError(null);
+        setEmotions(null);
+        setGeneratedImage(null);
+        setCurrentRecordRef(null);
 
         let textToAnalyze = dreamText;
         const needsTranslation = /[а-яё]/i.test(dreamText);
@@ -170,6 +189,7 @@ const LocalDreamAnalyzer = () => {
                         const historyRef = ref(db, `users/${currentUser.uid}/history`);
                         const newRecordRef = push(historyRef);
                         set(newRecordRef, newHistoryItem);
+                        setCurrentRecordRef(newRecordRef);
                     } catch (e) {
                         console.error('❌ Firebase error:', e);
                     }
@@ -224,71 +244,87 @@ const LocalDreamAnalyzer = () => {
                         </div>
 
                         {error && <div className="error-message">{error}</div>}
+                        
+                        {emotions && currentUser && userSettings?.visualizationEnabled && (
+                            <DreamVisualizer 
+                                dreamText={dreamText} 
+                                t={t} 
+                                onImageGenerated={handleImageGenerated}
+                            />
+                        )}
+                        
+                        {!currentUser && userSettings?.visualizationEnabled && (
+                            <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '10px' }}>
+                                {t.visualizer.loginRequired}
+                            </p>
+                        )}
                     </div>
 
-                    {emotions && (
-                        <div className="results-section">
-                            <h3>{t.analyzer.results}</h3>
-                            <div className="emotion-bars">
-                                {emotions.map((emotion, idx) => (
-                                    <div key={idx} className="emotion-item">
-                                        <div className="emotion-label">
-                                            <span className="emotion-icon">
-                                                {emotionEmojis[emotion.label] || '❓'}
-                                            </span>
-                                            <span className="emotion-name">
-                                                {t.emotions[emotion.label] || emotion.label}
-                                            </span>
-                                            <span className="emotion-score">
-                                                {(emotion.score * 100).toFixed(1)}%
-                                            </span>
+                    <div className="results-and-history">
+                        {emotions && (
+                            <div className="results-section">
+                                <h3>{t.analyzer.results}</h3>
+                                <div className="emotion-bars">
+                                    {emotions.map((emotion, idx) => (
+                                        <div key={idx} className="emotion-item">
+                                            <div className="emotion-label">
+                                                <span className="emotion-icon">
+                                                    {emotionEmojis[emotion.label] || '❓'}
+                                                </span>
+                                                <span className="emotion-name">
+                                                    {t.emotions[emotion.label] || emotion.label}
+                                                </span>
+                                                <span className="emotion-score">
+                                                    {(emotion.score * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="progress-bar-container">
+                                                <div
+                                                    className="progress-bar"
+                                                    style={{
+                                                        width: `${emotion.score * 100}%`,
+                                                        backgroundColor: emotion.score > 0.5 ? '#7B68EE' : '#9F8BFF'
+                                                    }}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="progress-bar-container">
-                                            <div
-                                                className="progress-bar"
-                                                style={{
-                                                    width: `${emotion.score * 100}%`,
-                                                    backgroundColor: emotion.score > 0.5 ? '#7B68EE' : '#9F8BFF'
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
 
-                            <div className="main-emotion">
-                                <span className="main-emotion-icon">
-                                    {emotionEmojis[emotions[0].label] || '✨'}
-                                </span>
-                                <span className="main-emotion-text">
-                                    {t.analyzer.mainEmotion}: <strong>{t.emotions[emotions[0].label]}</strong>
-                                    ({(emotions[0].score * 100).toFixed(1)}%)
-                                </span>
+                                <div className="main-emotion">
+                                    <span className="main-emotion-icon">
+                                        {emotionEmojis[emotions[0].label] || '✨'}
+                                    </span>
+                                    <span className="main-emotion-text">
+                                        {t.analyzer.mainEmotion}: <strong>{t.emotions[emotions[0].label]}</strong>
+                                        ({(emotions[0].score * 100).toFixed(1)}%)
+                                    </span>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {history.length > 0 && (
-                        <div className="history-section">
-                            <h3>{t.analyzer.lastAnalyzes}</h3>
-                            <div className="history-list">
-                                {history.map((item, idx) => (
-                                    <div key={idx} className="history-item">
-                                        <div className="history-text">
-                                            {item.text.substring(0, 50)}...
+                        {history.length > 0 && (
+                            <div className="history-section">
+                                <h3>{t.analyzer.lastAnalyzes}</h3>
+                                <div className="history-list">
+                                    {history.map((item, idx) => (
+                                        <div key={idx} className="history-item">
+                                            <div className="history-text">
+                                                {item.text.substring(0, 50)}...
+                                            </div>
+                                            <div className="history-emotion">
+                                                <span className="history-icon">
+                                                    {emotionEmojis[item.mainEmotion] || '✨'}
+                                                </span>
+                                                <span>{t.emotions[item.mainEmotion]}</span>
+                                            </div>
+                                            <div className="history-date">{item.date}</div>
                                         </div>
-                                        <div className="history-emotion">
-                                            <span className="history-icon">
-                                                {emotionEmojis[item.mainEmotion] || '✨'}
-                                            </span>
-                                            <span>{t.emotions[item.mainEmotion]}</span>
-                                        </div>
-                                        <div className="history-date">{item.date}</div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
                 <div className="model-info">

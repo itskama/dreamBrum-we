@@ -93,3 +93,44 @@
     display: none;
   }
 }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.lang-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.lang-switcher:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--primary-light);
+  transform: translateY(-1px);
+}
+
+.lang-switcher:active {
+  transform: translateY(0);
+}
+
+.lang-icon {
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.lang-text {
+  letter-spacing: 0.5px;
+}
