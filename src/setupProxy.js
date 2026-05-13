@@ -14,4 +14,32 @@ module.exports = function(app) {
       }
     })
   );
+
+  app.use(
+    '/anthropic',
+    createProxyMiddleware({
+      target: 'https://api.anthropic.com',
+      changeOrigin: true,
+      pathRewrite: {
+        '^/anthropic': '',
+      },
+      onProxyRes: function(proxyRes) {
+        proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+      }
+    })
+  );
+
+  app.use(
+    '/pollinations',
+    createProxyMiddleware({
+      target: 'https://image.pollinations.ai',
+      changeOrigin: true,
+      pathRewrite: {
+        '^/pollinations': '',
+      },
+      onProxyRes: function(proxyRes) {
+        proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+      }
+    })
+  );
 };
